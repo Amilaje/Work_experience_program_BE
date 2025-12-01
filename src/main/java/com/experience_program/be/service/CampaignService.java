@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 @Service
 public class CampaignService {
@@ -199,7 +200,6 @@ public class CampaignService {
     public void triggerRagRegistration(UUID campaignId) {
         Campaign campaign = getCampaignById(campaignId);
 
-        // 성과가 등록되지 않은 캠페인은 RAG 등록 불가
         if (!campaign.isPerformanceRegistered()) {
             throw new IllegalStateException("성과가 등록되지 않은 캠페인은 RAG DB에 등록할 수 없습니다.");
         }
@@ -208,30 +208,33 @@ public class CampaignService {
         if (selectedMessages.isEmpty()) {
             throw new IllegalStateException("RAG DB에 등록할 최종 선택된 메시지가 없습니다.");
         }
-        
-        MessageResult firstSelectedMessage = selectedMessages.get(0);
 
         String title;
         String sourceType;
         String content;
 
+        // 선택된 모든 메시지를 하나의 문자열로 조합
+        String combinedMessages = IntStream.range(0, selectedMessages.size())
+                .mapToObj(i -> String.format("메시지 %d: %s", i + 1, selectedMessages.get(i).getMessageText()))
+                .collect(Collectors.joining("\n"));
+
         if (campaign.isSuccessCase()) {
             title = "성공사례: " + campaign.getPurpose();
             sourceType = "성공_사례";
             content = String.format(
-                    "캠페인 목적: %s\n핵심 혜택: %s\n성공 메시지: %s",
+                    "캠페인 목적: %s\n핵심 혜택: %s\n%s",
                     campaign.getPurpose(),
                     campaign.getCoreBenefitText(),
-                    firstSelectedMessage.getMessageText()
+                    combinedMessages
             );
         } else {
             title = "실패사례: " + campaign.getPurpose();
             sourceType = "실패_사례";
             content = String.format(
-                    "캠페인 목적: %s\n핵심 혜택: %s\n성과 저조 메시지: %s\n(CTR: %s, 전환율: %s)",
+                    "캠페인 목적: %s\n핵심 혜택: %s\n%s\n(CTR: %s, 전환율: %s)",
                     campaign.getPurpose(),
                     campaign.getCoreBenefitText(),
-                    firstSelectedMessage.getMessageText(),
+                    combinedMessages,
                     campaign.getActualCtr(),
                     campaign.getConversionRate()
             );
