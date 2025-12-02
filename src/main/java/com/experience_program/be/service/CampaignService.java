@@ -22,7 +22,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 @Service
 public class CampaignService {
@@ -210,35 +209,22 @@ public class CampaignService {
         }
 
         String title;
-        String sourceType;
-        String content;
+        String sourceType = campaign.isSuccessCase() ? "성공_사례" : "실패_사례";
+        title = sourceType.replace("_", " ") + ": " + campaign.getPurpose();
 
-        // 선택된 모든 메시지를 하나의 문자열로 조합
-        String combinedMessages = IntStream.range(0, selectedMessages.size())
-                .mapToObj(i -> String.format("메시지 %d: %s", i + 1, selectedMessages.get(i).getMessageText()))
-                .collect(Collectors.joining("\n"));
+        // 선택된 모든 메시지를 타겟 그룹 정보와 함께 명확하게 구분하여 조합
+        String combinedMessages = selectedMessages.stream()
+                .map(msg -> String.format("타겟: %s\n메시지: %s", msg.getTargetName(), msg.getMessageText()))
+                .collect(Collectors.joining("\n\n---\n\n"));
 
-        if (campaign.isSuccessCase()) {
-            title = "성공사례: " + campaign.getPurpose();
-            sourceType = "성공_사례";
-            content = String.format(
-                    "캠페인 목적: %s\n핵심 혜택: %s\n%s",
-                    campaign.getPurpose(),
-                    campaign.getCoreBenefitText(),
-                    combinedMessages
-            );
-        } else {
-            title = "실패사례: " + campaign.getPurpose();
-            sourceType = "실패_사례";
-            content = String.format(
-                    "캠페인 목적: %s\n핵심 혜택: %s\n%s\n(CTR: %s, 전환율: %s)",
-                    campaign.getPurpose(),
-                    campaign.getCoreBenefitText(),
-                    combinedMessages,
-                    campaign.getActualCtr(),
-                    campaign.getConversionRate()
-            );
-        }
+        String content = String.format(
+                "캠페인 목적: %s\n핵심 혜택: %s\n\n--- 메시지 목록 ---\n\n%s\n\n--- 성과 ---\nCTR: %s\n전환율: %s",
+                campaign.getPurpose(),
+                campaign.getCoreBenefitText(),
+                combinedMessages,
+                campaign.getActualCtr(),
+                campaign.getConversionRate()
+        );
 
         SuccessCaseDto successCaseDto = new SuccessCaseDto(
                 title,
