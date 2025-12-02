@@ -18,7 +18,7 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/campaigns")
+@RequestMapping("/api/campaigns" )
 public class CampaignController {
 
     private final CampaignService campaignService;
