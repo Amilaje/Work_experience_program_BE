@@ -28,8 +28,11 @@ public class KnowledgeController {
     }
 
     @GetMapping
-    public Mono<ResponseEntity<Object>> getAllKnowledge(Pageable pageable) {
-        return knowledgeService.getAllKnowledge(pageable)
+    public Mono<ResponseEntity<Object>> getAllKnowledge(
+            @RequestParam(name = "title", required = false) String title,
+            @RequestParam(name = "source_type", required = false) String sourceType,
+            Pageable pageable) {
+        return knowledgeService.getAllKnowledge(title, sourceType, pageable)
                 .map(ResponseEntity::ok);
     }
 

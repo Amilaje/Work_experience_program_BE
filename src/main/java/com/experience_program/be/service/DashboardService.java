@@ -1,72 +1,71 @@
 package com.experience_program.be.service;
 
-import com.experience_program.be.dto.CountDto;
+import com.experience_program.be.dto.MonthlyStatusCountDto;
 import com.experience_program.be.entity.Campaign;
-import com.experience_program.be.dto.DashboardSummaryDto;
 import com.experience_program.be.repository.CampaignRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Mono;
 
-import java.util.HashMap;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 @Service
 public class DashboardService {
 
     private final CampaignRepository campaignRepository;
-    private final WebClient webClient;
 
     @Autowired
-    public DashboardService(CampaignRepository campaignRepository, WebClient webClient) {
+    public DashboardService(CampaignRepository campaignRepository) {
         this.campaignRepository = campaignRepository;
-        this.webClient = webClient;
     }
 
-    public Mono<DashboardSummaryDto> getDashboardSummary() {
-        List<Object[]> results = campaignRepository.countCampaignsByStatus();
+    public List<MonthlyStatusCountDto> getMonthlyCampaignSummary() {
+        // 1. 상태 분류 정의
+        List<String> ongoingStatuses = Arrays.asList("PROCESSING", "REFINING", "COMPLETED", "MESSAGE_SELECTED");
+        List<String> completedStatuses = Arrays.asList("PERFORMANCE_REGISTERED", "SUCCESS_CASE", "RAG_REGISTERED");
 
-        Map<String, Long> rawCounts = results.stream()
-                .collect(Collectors.toMap(
-                        row -> (String) row[0],
-                        row -> (Long) row[1]
-                ));
+        // 2. 기준 날짜 설정 (오늘로부터 6개월 전)
+        LocalDateTime startDate = LocalDate.now().minusMonths(6).withDayOfMonth(1).atStartOfDay();
 
-        Map<String, Long> finalStatusCounts = new HashMap<>();
+        // 3. 최근 6개월의 모든 월을 0으로 초기화 (순서 보장을 위해 LinkedHashMap 사용)
+        Map<String, MonthlyStatusCountDto> monthlyMap = new LinkedHashMap<>();
+        YearMonth currentMonth = YearMonth.now();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM");
+        IntStream.range(0, 6)
+                .mapToObj(currentMonth::minusMonths)
+                .sorted()
+                .forEach(month -> monthlyMap.put(month.format(formatter), new MonthlyStatusCountDto(month.format(formatter))));
 
-        // 1. CREATING (생성중)
-        long creatingCount = rawCounts.getOrDefault("PROCESSING", 0L) + rawCounts.getOrDefault("REFINING", 0L);
-        finalStatusCounts.put("CREATING", creatingCount);
+        // 4. DB에서 월별/상태별 캠페인 수 조회
+        List<Object[]> dbResults = campaignRepository.countMonthlyCampaignsByStatusSince(startDate);
 
-        // 2. ONGOING (진행중)
-        long ongoingCount = rawCounts.getOrDefault("COMPLETED", 0L) + rawCounts.getOrDefault("MESSAGE_SELECTED", 0L);
-        finalStatusCounts.put("ONGOING", ongoingCount);
+        // 5. DB 결과를 순회하며 맵에 값 채우기
+        for (Object[] row : dbResults) {
+            String month = (String) row[0];
+            String status = (String) row[1];
+            long count = (Long) row[2];
 
-        // 3. CASE_REGISTERED (사례 등록)
-        long caseRegisteredCount = rawCounts.getOrDefault("PERFORMANCE_REGISTERED", 0L) + rawCounts.getOrDefault("SUCCESS_CASE", 0L);
-        finalStatusCounts.put("CASE_REGISTERED", caseRegisteredCount);
+            MonthlyStatusCountDto dto = monthlyMap.get(month);
+            if (dto != null) {
+                if (ongoingStatuses.contains(status)) {
+                    dto.setOngoingCount(dto.getOngoingCount() + count);
+                } else if (completedStatuses.contains(status)) {
+                    dto.setCompletedCount(dto.getCompletedCount() + count);
+                }
+            }
+        }
 
-        // 4. DB_REGISTERED (DB 등록)
-        long dbRegisteredCount = rawCounts.getOrDefault("RAG_REGISTERED", 0L);
-        finalStatusCounts.put("DB_REGISTERED", dbRegisteredCount);
-
-        // 전체 캠페인 수 계산 (FAILED 제외)
-        long totalCampaigns = creatingCount + ongoingCount + caseRegisteredCount + dbRegisteredCount;
-
-        // AI 서버에서 totalKnowledge 개수 가져오기
-        return webClient.get()
-                .uri("/api/knowledge/count")
-                .retrieve()
-                .bodyToMono(CountDto.class)
-                .map(countDto -> new DashboardSummaryDto(totalCampaigns, finalStatusCounts, countDto.getCount()))
-                .defaultIfEmpty(new DashboardSummaryDto(totalCampaigns, finalStatusCounts, 0L))
-                .onErrorResume(e -> {
-                    System.err.println("Error fetching knowledge count from AI server: " + e.getMessage());
-                    return Mono.just(new DashboardSummaryDto(totalCampaigns, finalStatusCounts, 0L));
-                });
+        // 6. 맵의 값들을 리스트로 변환하여 반환
+        return new ArrayList<>(monthlyMap.values());
     }
 
     public List<Campaign> getRecentActivity() {

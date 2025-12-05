@@ -1,6 +1,6 @@
 package com.experience_program.be.controller;
 
-import com.experience_program.be.dto.DashboardSummaryDto;
+import com.experience_program.be.dto.MonthlyStatusCountDto;
 import com.experience_program.be.entity.Campaign;
 import com.experience_program.be.service.DashboardService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -8,7 +8,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Mono;
 
 import java.util.List;
 
@@ -23,11 +22,11 @@ public class DashboardController {
         this.dashboardService = dashboardService;
     }
 
-    // 대시보드 요약 조회
+    // 월별 캠페인 상태(진행중/완료) 수 조회 (최근 6개월)
     @GetMapping("/summary")
-    public Mono<ResponseEntity<DashboardSummaryDto>> getDashboardSummary() {
-        return dashboardService.getDashboardSummary()
-                .map(ResponseEntity::ok);
+    public ResponseEntity<List<MonthlyStatusCountDto>> getMonthlyCampaignSummary() {
+        List<MonthlyStatusCountDto> summary = dashboardService.getMonthlyCampaignSummary();
+        return ResponseEntity.ok(summary);
     }
 
     // 최근 활동 조회

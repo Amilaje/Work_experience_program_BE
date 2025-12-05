@@ -6,6 +6,7 @@ import com.experience_program.be.dto.KnowledgeUpdateDto;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
@@ -48,12 +49,19 @@ public class KnowledgeService {
                 .subscribe();
     }
 
-    public Mono<Object> getAllKnowledge(Pageable pageable) {
+    public Mono<Object> getAllKnowledge(String title, String sourceType, Pageable pageable) {
         return webClient.get()
                 .uri(uriBuilder -> {
                     uriBuilder.path("/api/knowledge")
                             .queryParam("page", pageable.getPageNumber())
                             .queryParam("size", pageable.getPageSize());
+
+                    if (StringUtils.hasText(title)) {
+                        uriBuilder.queryParam("title__contains", title);
+                    }
+                    if (StringUtils.hasText(sourceType)) {
+                        uriBuilder.queryParam("source_type", sourceType);
+                    }
 
                     if (pageable.getSort().isSorted()) {
                         String sortString = pageable.getSort().stream()
