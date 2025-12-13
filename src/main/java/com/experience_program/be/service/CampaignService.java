@@ -2,10 +2,10 @@ package com.experience_program.be.service;
 
 import com.experience_program.be.controller.CampaignSpecification;
 import com.experience_program.be.dto.*;
-import com.experience_program.be.entity.Campaign;
-import com.experience_program.be.entity.MessageResult;
-import com.experience_program.be.entity.PerformanceStatus;
+import com.experience_program.be.entity.*;
 import com.experience_program.be.repository.CampaignRepository;
+import com.experience_program.be.repository.ChatMessageRepository;
+import com.experience_program.be.repository.ChatSessionRepository;
 import com.experience_program.be.repository.MessageResultRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -36,17 +36,82 @@ public class CampaignService {
 
     private final CampaignRepository campaignRepository;
     private final MessageResultRepository messageResultRepository;
+    private final ChatSessionRepository chatSessionRepository;
+    private final ChatMessageRepository chatMessageRepository;
     private final WebClient webClient;
     private final ObjectMapper objectMapper;
 
+    private static final int MAX_CHAT_SESSIONS = 50;
+
     @Autowired
-    public CampaignService(CampaignRepository campaignRepository, MessageResultRepository messageResultRepository, WebClient webClient, ObjectMapper objectMapper) {
+    public CampaignService(CampaignRepository campaignRepository, MessageResultRepository messageResultRepository,
+                           ChatSessionRepository chatSessionRepository, ChatMessageRepository chatMessageRepository,
+                           WebClient webClient, ObjectMapper objectMapper) {
         this.campaignRepository = campaignRepository;
         this.messageResultRepository = messageResultRepository;
+        this.chatSessionRepository = chatSessionRepository;
+        this.chatMessageRepository = chatMessageRepository;
         this.webClient = webClient;
         this.objectMapper = objectMapper;
     }
 
+    @Transactional
+    public CampaignChatResponseDto handleInteractiveBuild(CampaignChatRequestDto request) {
+        // 1. AI 서버 호출을 동기 방식으로 변경
+        CampaignChatResponseDto response = webClient.post()
+                .uri("/api/build-campaign/interactive")
+                .body(Mono.just(request), CampaignChatRequestDto.class)
+                .retrieve()
+                .bodyToMono(CampaignChatResponseDto.class)
+                .block(); // 응답이 올 때까지 대기
+
+        if (response != null) {
+            // 2. DB 저장 로직을 동기 코드 블록 안에서 실행
+            saveChatHistory(request, response);
+            enforceChatSessionLimit();
+        }
+
+        return response;
+    }
+
+    private void saveChatHistory(CampaignChatRequestDto request, CampaignChatResponseDto response) {
+        String conversationId = response.getConversationId();
+        ChatSession session = chatSessionRepository.findById(conversationId)
+                .orElseGet(() -> ChatSession.builder().conversationId(conversationId).build());
+
+        // AI가 생성한 캠페인 제목으로 세션 제목 업데이트
+        if (response.getCurrentCampaignData() != null && StringUtils.hasText(response.getCurrentCampaignData().getCampaignTitle())) {
+            session.setTitle(response.getCurrentCampaignData().getCampaignTitle());
+        }
+
+        // 사용자 메시지 저장
+        ChatMessage userMessage = ChatMessage.builder()
+                .session(session)
+                .role("user")
+                .content(request.getUserMessage())
+                .build();
+        session.getMessages().add(userMessage);
+
+        // AI 응답 메시지 저장
+        ChatMessage aiMessage = ChatMessage.builder()
+                .session(session)
+                .role("assistant")
+                .content(response.getAiResponse())
+                .build();
+        session.getMessages().add(aiMessage);
+
+        chatSessionRepository.save(session);
+    }
+
+    private void enforceChatSessionLimit() {
+        long totalSessions = chatSessionRepository.count();
+        if (totalSessions > MAX_CHAT_SESSIONS) {
+            chatSessionRepository.findFirstByOrderByLastUpdatedAtAsc()
+                    .ifPresent(chatSessionRepository::delete);
+        }
+    }
+
+    // ... (기존의 다른 메서드들은 그대로 유지)
     @Transactional
     public Campaign createCampaign(CampaignRequestDto campaignRequestDto) {
         String sourceUrlsJson = convertObjectToJson(campaignRequestDto.getSourceUrls());

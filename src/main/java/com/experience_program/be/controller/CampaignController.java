@@ -1,9 +1,6 @@
 package com.experience_program.be.controller;
 
-import com.experience_program.be.dto.CampaignPerformanceUpdateDto;
-import com.experience_program.be.dto.MessageSelectionDto;
-import com.experience_program.be.dto.CampaignRequestDto;
-import com.experience_program.be.dto.RefineRequestDto;
+import com.experience_program.be.dto.*;
 import com.experience_program.be.entity.Campaign;
 import com.experience_program.be.service.CampaignService;
 import jakarta.validation.Valid;
@@ -26,6 +23,12 @@ public class CampaignController {
     @Autowired
     public CampaignController(CampaignService campaignService) {
         this.campaignService = campaignService;
+    }
+
+    @PostMapping("/build/interactive")
+    public ResponseEntity<CampaignChatResponseDto> handleInteractiveBuild(@RequestBody CampaignChatRequestDto request) {
+        CampaignChatResponseDto response = campaignService.handleInteractiveBuild(request);
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping
@@ -60,7 +63,7 @@ public class CampaignController {
 
     @PostMapping("/{campaign_id}/refine")
     public ResponseEntity<Void> refineMessage(@PathVariable("campaign_id") UUID campaignId, @RequestBody RefineRequestDto refineRequest) {
-        campaignService.refineMessage(campaignId, refineRequest.getFeedback_text());
+        campaignService.refineMessage(campaignId, refineRequest.getFeedbackText());
         return ResponseEntity.accepted().build(); // Accepted: 요청이 접수되었으나 처리는 비동기
     }
 
